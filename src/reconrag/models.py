@@ -45,3 +45,23 @@ class Answer(BaseModel):
     evidence: list[SearchResult] = Field(default_factory=list)
     model_name: str
     latency_seconds: float = Field(ge=0)
+
+
+class ParsedBlock(BaseModel):
+    """A text block extracted from a paper with page provenance."""
+
+    text: str
+    label: str
+    page_numbers: list[int] = Field(default_factory=list)
+    section_heading: str | None = None
+
+
+class ParsedPaper(BaseModel):
+    """Structured content extracted from one research-paper PDF."""
+
+    title: str
+    filename: str
+    checksum: str
+    page_count: int
+    blocks: list[ParsedBlock] = Field(default_factory=list)
+    markdown: str

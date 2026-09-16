@@ -1,5 +1,6 @@
 .DS_Store
-papers
+papers/
+data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

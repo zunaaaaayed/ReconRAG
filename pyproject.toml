@@ -1,7 +1,7 @@
 [project]
 name = "reconrag"
 version = "0.1.0"
-description = "Add your description here"
+description = "Evidence-grounded research assistant for sparse-view CT and 3D reconstruction literature"
 readme = "README.md"
 authors = [
     { name = "zunaaaaayed", email = "zunayedology@gmail.com" }
@@ -29,3 +29,14 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.16.7",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers --strict-config"
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP"]

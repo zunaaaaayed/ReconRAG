@@ -7,20 +7,6 @@ The project is being developed as a transparent, locally runnable RAG system. It
 > [!IMPORTANT]
 > ReconRAG is a research and educational tool. It does not provide medical advice or clinical decision support.
 
-## Current status
-
-**Milestone 0 — project foundation**
-
-- [x] Python project and dependency management
-- [x] Streamlit application shell
-- [x] Environment-based configuration
-- [x] Core data contracts
-- [x] Smoke tests and linting
-- [ ] Structured PDF ingestion
-- [ ] Section-aware chunking
-- [ ] Local vector indexing
-- [ ] Evidence-backed question answering
-- [ ] Retrieval evaluation
 
 ## Technology
 

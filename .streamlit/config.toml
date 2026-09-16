@@ -1,0 +1,13 @@
+[server]
+enableStaticServing = true
+
+[theme]
+font = "Cooper Medium, serif"
+headingFont = "Cooper Medium, serif"
+baseFontWeight = 400
+
+[[theme.fontFaces]]
+family = "Cooper Medium"
+url = "app/static/fonts/Cooper-Medium.ttf"
+weight = "400"
+style = "normal"

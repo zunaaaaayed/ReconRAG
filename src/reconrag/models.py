@@ -28,6 +28,7 @@ class Chunk(BaseModel):
     page_start: int | None = Field(default=None, ge=1)
     page_end: int | None = Field(default=None, ge=1)
     section_heading: str | None = None
+    token_count: int = Field(ge=1)
 
 
 class SearchResult(BaseModel):

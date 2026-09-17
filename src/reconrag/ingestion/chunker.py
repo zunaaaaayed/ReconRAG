@@ -66,9 +66,9 @@ class SectionAwareChunker:
             if current and block_section != current_section:
                 output.append(
                     self._build_chunk(
-                        paper,
-                        current,
-                        len(output),
+                        paper=paper,
+                        segments=current,
+                        chunk_index=len(output),
                     )
                 )
                 current = []
@@ -84,9 +84,9 @@ class SectionAwareChunker:
                 if current and self._count_segments(candidate) > self.target_tokens:
                     output.append(
                         self._build_chunk(
-                            paper,
-                            current,
-                            len(output),
+                            paper=paper,
+                            segments=current,
+                            chunk_index=len(output),
                         )
                     )
 
@@ -104,9 +104,9 @@ class SectionAwareChunker:
         if current:
             output.append(
                 self._build_chunk(
-                    paper,
-                    current,
-                    len(output),
+                    paper=paper,
+                    segments=current,
+                    chunk_index=len(output),
                 )
             )
 

@@ -1,5 +1,7 @@
 """Streamlit entry point for ReconRAG."""
 
+from datetime import UTC, datetime
+
 import streamlit as st
 
 from reconrag.config import get_settings
@@ -10,7 +12,11 @@ from reconrag.ingestion.parser import (
     PdfParser,
     PdfParsingError,
 )
-from reconrag.models import Chunk, ParsedPaper
+from reconrag.models import Chunk, Document, ParsedPaper
+from reconrag.retrieval import (
+    InMemoryVectorIndex,
+    SentenceTransformerEmbedder,
+)
 from reconrag.services.ingest_service import store_pdf
 
 
@@ -34,6 +40,14 @@ def get_chunker(
     )
 
 
+@st.cache_resource
+def get_embedder(
+    model_name: str,
+) -> SentenceTransformerEmbedder:
+    """Reuse the embedding model across Streamlit reruns."""
+    return SentenceTransformerEmbedder(model_name)
+
+
 def _page_label(
     page_numbers: list[int],
 ) -> str:
@@ -52,6 +66,19 @@ def _chunk_page_label(
         return str(chunk.page_start)
 
     return f"{chunk.page_start}–{chunk.page_end}"
+
+
+def _document_from_paper(
+    paper: ParsedPaper,
+) -> Document:
+    """Create retrieval metadata for a parsed paper."""
+    return Document(
+        id=paper.checksum,
+        title=paper.title,
+        filename=paper.filename,
+        checksum=paper.checksum,
+        ingested_at=datetime.now(UTC),
+    )
 
 
 def _render_parsed_paper(
@@ -140,7 +167,7 @@ def _render_parsed_paper(
 
 
 def render_app() -> None:
-    """Render the Milestone 2 application."""
+    """Render the ReconRAG application."""
     settings = get_settings()
 
     st.set_page_config(
@@ -160,7 +187,7 @@ def render_app() -> None:
     with st.sidebar:
         st.header("Project status")
 
-        st.success("Milestone 2 · Section-aware chunking")
+        st.success("Milestone 3 · Semantic retrieval")
 
         parsed_papers = st.session_state.get(
             "parsed_papers",
@@ -182,6 +209,15 @@ def render_app() -> None:
             sum(len(chunks) for chunks in paper_chunks.values()),
         )
 
+        vector_index = st.session_state.get(
+            "vector_index",
+        )
+
+        st.metric(
+            "Indexed chunks",
+            vector_index.size if vector_index else 0,
+        )
+
         st.caption("All documents and embeddings remain on this machine.")
 
     library_tab, ask_tab = st.tabs(
@@ -201,7 +237,7 @@ def render_app() -> None:
         )
 
         parse_clicked = st.button(
-            "Parse and chunk papers",
+            "Parse, chunk, and index papers",
             disabled=not uploaded_files,
             type="primary",
         )
@@ -213,6 +249,10 @@ def render_app() -> None:
             )
             st.session_state.setdefault(
                 "paper_chunks",
+                {},
+            )
+            st.session_state.setdefault(
+                "documents",
                 {},
             )
 
@@ -252,16 +292,69 @@ def render_app() -> None:
 
                     st.session_state["paper_chunks"][paper.checksum] = chunks
 
+                    st.session_state["documents"][paper.checksum] = (
+                        _document_from_paper(paper)
+                    )
+
                 except (
                     OSError,
                     ValueError,
                     PdfParsingError,
                 ) as exc:
-                    st.error(str(exc))
+                    st.error(f"Could not process {uploaded_file.name}: {exc}")
+
+            documents = st.session_state.get(
+                "documents",
+                {},
+            )
+            chunks_by_document = st.session_state.get(
+                "paper_chunks",
+                {},
+            )
+
+            if documents:
+                progress.progress(
+                    0.95,
+                    text=("Creating local embeddings..."),
+                )
+
+                try:
+                    vector_index = InMemoryVectorIndex(
+                        get_embedder(settings.embedding_model)
+                    )
+
+                    vector_index.build(
+                        [
+                            (
+                                document,
+                                chunks_by_document.get(
+                                    document_id,
+                                    [],
+                                ),
+                            )
+                            for (
+                                document_id,
+                                document,
+                            ) in documents.items()
+                        ]
+                    )
+
+                    st.session_state["vector_index"] = vector_index
+
+                except (
+                    OSError,
+                    RuntimeError,
+                    ValueError,
+                ) as exc:
+                    st.session_state.pop(
+                        "vector_index",
+                        None,
+                    )
+                    st.error(f"Could not create the semantic index: {exc}")
 
             progress.progress(
                 1.0,
-                text="Parsing and chunking complete.",
+                text=("Parsing, chunking, and indexing complete."),
             )
 
         parsed_papers = st.session_state.get(
@@ -284,24 +377,133 @@ def render_app() -> None:
                     chunks,
                 )
         else:
-            st.info("Upload one or more PDFs to inspect their chunks.")
+            st.info("Upload a research paper to inspect its extracted structure.")
 
     with ask_tab:
-        st.subheader("Ask across the evidence")
+        st.subheader("Search the evidence")
 
-        st.text_input(
-            "Research question",
-            placeholder=("Which methods address limited-angle CT reconstruction?"),
-            disabled=True,
+        vector_index = st.session_state.get(
+            "vector_index",
+        )
+        documents = st.session_state.get(
+            "documents",
+            {},
+        )
+        chunks_by_document = st.session_state.get(
+            "paper_chunks",
+            {},
         )
 
-        st.info("Evidence-backed question answering will be enabled after indexing.")
+        if vector_index is None or vector_index.size == 0:
+            st.info("Parse and index at least one paper before searching.")
+        else:
+            query = st.text_input(
+                "Research question",
+                placeholder=(
+                    "How are 3D Gaussians optimized for sparse-view reconstruction?"
+                ),
+            )
 
-    st.divider()
+            document_options: list[str | None] = [
+                None,
+                *documents.keys(),
+            ]
 
-    st.caption(
-        "Research and educational use only. ReconRAG does not provide medical advice."
-    )
+            selected_document = st.selectbox(
+                "Paper filter",
+                options=document_options,
+                format_func=lambda document_id: (
+                    "All papers"
+                    if document_id is None
+                    else documents[document_id].title
+                ),
+            )
+
+            if selected_document is None:
+                available_chunks = [
+                    chunk for chunks in chunks_by_document.values() for chunk in chunks
+                ]
+            else:
+                available_chunks = chunks_by_document.get(
+                    selected_document,
+                    [],
+                )
+
+            section_options: list[str | None] = [
+                None,
+                *sorted(
+                    {
+                        chunk.section_heading
+                        for chunk in available_chunks
+                        if chunk.section_heading
+                    }
+                ),
+            ]
+
+            selected_section = st.selectbox(
+                "Section filter",
+                options=section_options,
+                format_func=lambda section: (
+                    "All sections" if section is None else section
+                ),
+            )
+
+            top_k = st.slider(
+                "Number of passages",
+                min_value=1,
+                max_value=10,
+                value=5,
+            )
+
+            search_clicked = st.button(
+                "Search papers",
+                type="primary",
+                disabled=not query.strip(),
+            )
+
+            if search_clicked:
+                with st.spinner("Searching the indexed evidence..."):
+                    results = vector_index.search(
+                        query=query,
+                        top_k=top_k,
+                        document_ids=(
+                            None if selected_document is None else {selected_document}
+                        ),
+                        section_heading=(selected_section),
+                    )
+
+                if not results:
+                    st.warning("No passages matched the current filters.")
+
+                for rank, result in enumerate(
+                    results,
+                    start=1,
+                ):
+                    chunk = result.chunk
+
+                    with st.container(border=True):
+                        st.markdown(f"**{rank}. {result.document.title}**")
+
+                        page_label = _chunk_page_label(chunk)
+
+                        page_prefix = (
+                            "Page"
+                            if (
+                                chunk.page_start is not None
+                                and chunk.page_start == chunk.page_end
+                            )
+                            else "Pages"
+                        )
+
+                        section_label = chunk.section_heading or "Unknown section"
+
+                        st.caption(
+                            f"{page_prefix} {page_label} · "
+                            f"{section_label} · "
+                            f"Similarity {result.score:.3f}"
+                        )
+
+                        st.write(chunk.text)
 
 
 if __name__ == "__main__":

@@ -5,10 +5,12 @@ from reconrag.retrieval.embedder import (
     TextEmbedder,
 )
 from reconrag.retrieval.vector_index import (
+    IndexedEmbedding,
     InMemoryVectorIndex,
 )
 
 __all__ = [
+    "IndexedEmbedding",
     "InMemoryVectorIndex",
     "SentenceTransformerEmbedder",
     "TextEmbedder",

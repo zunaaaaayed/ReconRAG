@@ -9,6 +9,15 @@ from reconrag.retrieval.embedder import TextEmbedder
 
 
 @dataclass(frozen=True)
+class IndexedEmbedding:
+    """A chunk, its document, and its stored embedding."""
+
+    document: Document
+    chunk: Chunk
+    vector: np.ndarray
+
+
+@dataclass(frozen=True)
 class _IndexedChunk:
     """Metadata associated with one embedding row."""
 
@@ -31,6 +40,74 @@ class InMemoryVectorIndex:
     def size(self) -> int:
         """Return the number of indexed chunks."""
         return len(self._records)
+
+    def snapshot(
+        self,
+    ) -> list[IndexedEmbedding]:
+        """Copy the indexed records and vectors for persistence."""
+        if self._embeddings is None:
+            return []
+
+        return [
+            IndexedEmbedding(
+                document=record.document,
+                chunk=record.chunk,
+                vector=vector.copy(),
+            )
+            for record, vector in zip(
+                self._records,
+                self._embeddings,
+                strict=True,
+            )
+        ]
+
+    def load(
+        self,
+        embeddings: list[IndexedEmbedding],
+    ) -> None:
+        """Restore an index from previously stored embeddings."""
+        if not embeddings:
+            self._records = []
+            self._embeddings = None
+            return
+
+        records: list[_IndexedChunk] = []
+        vectors: list[np.ndarray] = []
+        dimension: int | None = None
+
+        for indexed_embedding in embeddings:
+            document = indexed_embedding.document
+            chunk = indexed_embedding.chunk
+
+            if chunk.document_id != document.id:
+                raise ValueError("A chunk does not belong to its document.")
+
+            vector = np.asarray(
+                indexed_embedding.vector,
+                dtype=np.float32,
+            )
+
+            if vector.ndim != 1:
+                raise ValueError("Each stored embedding must be one-dimensional.")
+
+            if vector.size == 0:
+                raise ValueError("Stored embeddings cannot be empty.")
+
+            if dimension is None:
+                dimension = vector.shape[0]
+            elif vector.shape[0] != dimension:
+                raise ValueError("Stored embedding dimensions do not match.")
+
+            records.append(
+                _IndexedChunk(
+                    chunk=chunk,
+                    document=document,
+                )
+            )
+            vectors.append(vector)
+
+        self._records = records
+        self._embeddings = self._normalize_rows(np.vstack(vectors))
 
     def build(
         self,

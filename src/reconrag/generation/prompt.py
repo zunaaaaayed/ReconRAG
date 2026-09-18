@@ -1,6 +1,7 @@
 """Prompts for evidence-grounded answer generation."""
 
 import re
+
 from reconrag.models import SearchResult
 
 SYSTEM_PROMPT = """

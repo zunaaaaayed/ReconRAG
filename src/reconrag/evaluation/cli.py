@@ -14,7 +14,10 @@ from reconrag.evaluation.evaluator import (
     RetrievalReport,
 )
 from reconrag.retrieval import (
+    BM25Index,
+    HybridSearchIndex,
     InMemoryVectorIndex,
+    RankedSearchIndex,
     SentenceTransformerEmbedder,
 )
 from reconrag.storage import LibraryRepository
@@ -71,6 +74,16 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--embedding-model",
         help="Expected embedding model.",
+    )
+    run_parser.add_argument(
+        "--retriever",
+        choices=[
+            "semantic",
+            "lexical",
+            "hybrid",
+        ],
+        default="semantic",
+        help=("Retrieval algorithm to evaluate (default: semantic)."),
     )
     run_parser.add_argument(
         "--output",
@@ -187,20 +200,17 @@ def _print_chunk_catalogue(
 
 def _report_payload(
     benchmark_name: str,
-    embedding_model: str,
+    retriever_metadata: dict[str, Any],
     report: RetrievalReport,
 ) -> dict[str, Any]:
     """Convert an evaluation report to JSON data."""
     return {
         "benchmark": benchmark_name,
+        "retriever": retriever_metadata,
         "case_count": report.case_count,
         "mean_recall_at_k": (report.mean_recall_at_k),
         "mean_reciprocal_rank": (report.mean_reciprocal_rank),
         "hit_rate": report.hit_rate,
-        "retriever": {
-            "type": "dense_cosine",
-            "embedding_model": embedding_model,
-        },
         "results": [
             {
                 "case_id": result.case_id,
@@ -275,7 +285,7 @@ def _run_chunks_command(
 def _run_benchmark_command(
     args: argparse.Namespace,
 ) -> None:
-    """Evaluate the persistent semantic index."""
+    """Evaluate a selected persistent retrieval index."""
     settings = get_settings()
     database_path = (
         args.database if args.database is not None else settings.database_path
@@ -292,24 +302,96 @@ def _run_benchmark_command(
     if not snapshot.documents:
         raise SystemExit("The persistent paper library is empty.")
 
-    if snapshot.requires_reindex:
+    entries = [
+        (
+            document,
+            snapshot.paper_chunks.get(
+                document_id,
+                [],
+            ),
+        )
+        for (
+            document_id,
+            document,
+        ) in snapshot.documents.items()
+    ]
+
+    if not any(chunks for _, chunks in entries):
+        raise SystemExit("The library contains no stored chunks.")
+
+    requires_semantic_index = args.retriever in {
+        "semantic",
+        "hybrid",
+    }
+
+    if requires_semantic_index and snapshot.requires_reindex:
         raise SystemExit(
             "Stored embeddings use another model. "
             "Start the Streamlit app once to reindex "
             "the library before evaluation."
         )
 
-    if not snapshot.embeddings:
+    if requires_semantic_index and not snapshot.embeddings:
         raise SystemExit("The library contains no stored embeddings.")
+
+    search_index: RankedSearchIndex
+    retriever_metadata: dict[str, Any]
+
+    if args.retriever == "semantic":
+        semantic_index = InMemoryVectorIndex(
+            SentenceTransformerEmbedder(embedding_model)
+        )
+        semantic_index.load(snapshot.embeddings)
+
+        search_index = semantic_index
+        retriever_metadata = {
+            "type": "dense_cosine",
+            "embedding_model": (embedding_model),
+        }
+
+    elif args.retriever == "lexical":
+        lexical_index = BM25Index()
+        lexical_index.build(entries)
+
+        search_index = lexical_index
+        retriever_metadata = {
+            "type": "bm25",
+            "k1": lexical_index.k1,
+            "b": lexical_index.b,
+        }
+
+    else:
+        semantic_index = InMemoryVectorIndex(
+            SentenceTransformerEmbedder(embedding_model)
+        )
+        semantic_index.load(snapshot.embeddings)
+
+        lexical_index = BM25Index()
+        lexical_index.build(entries)
+
+        hybrid_index = HybridSearchIndex(
+            semantic_index=semantic_index,
+            lexical_index=lexical_index,
+        )
+
+        search_index = hybrid_index
+        retriever_metadata = {
+            "type": "hybrid_rrf",
+            "embedding_model": (embedding_model),
+            "bm25_k1": lexical_index.k1,
+            "bm25_b": lexical_index.b,
+            "rrf_k": hybrid_index.rrf_k,
+            "candidate_multiplier": (hybrid_index.candidate_multiplier),
+            "semantic_weight": (hybrid_index.semantic_weight),
+            "lexical_weight": (hybrid_index.lexical_weight),
+        }
 
     benchmark = load_benchmark(args.benchmark)
 
-    vector_index = InMemoryVectorIndex(SentenceTransformerEmbedder(embedding_model))
-    vector_index.load(snapshot.embeddings)
-
-    evaluator = RetrievalEvaluator(vector_index)
+    evaluator = RetrievalEvaluator(search_index)
     report = evaluator.evaluate(benchmark.to_retrieval_cases())
 
+    print(f"Retriever: {args.retriever}")
     _print_report(
         benchmark.name,
         report,
@@ -320,7 +402,7 @@ def _run_benchmark_command(
             args.output,
             _report_payload(
                 benchmark.name,
-                embedding_model,
+                retriever_metadata,
                 report,
             ),
         )

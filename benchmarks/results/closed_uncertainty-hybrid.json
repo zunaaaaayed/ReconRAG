@@ -1,23 +1,29 @@
 {
   "benchmark": "Closed-Uncertainty semantic retrieval baseline",
   "retriever": {
-    "type": "dense_cosine",
-    "embedding_model": "BAAI/bge-small-en-v1.5"
+    "type": "hybrid_rrf",
+    "embedding_model": "BAAI/bge-small-en-v1.5",
+    "bm25_k1": 1.5,
+    "bm25_b": 0.75,
+    "rrf_k": 60,
+    "candidate_multiplier": 4,
+    "semantic_weight": 1.0,
+    "lexical_weight": 1.0
   },
   "case_count": 8,
-  "mean_recall_at_k": 0.8958333333333334,
-  "mean_reciprocal_rank": 0.9375,
+  "mean_recall_at_k": 0.78125,
+  "mean_reciprocal_rank": 1.0,
   "hit_rate": 1.0,
   "results": [
     {
       "case_id": "analytic-moments",
       "question": "Under fixed Gaussian geometry, why can radiative CT rendering support one-pass analytic predictive moments, and what normalization is required for squared projected kernels?",
       "retrieved_chunk_ids": [
-        "f298519eaa16ffb09d9c67da",
-        "cae9706ce07f8eb6dd74f5c9",
         "4b70a3f445b831de8978241a",
-        "b9304fce8088385f640d8bba",
-        "d6706569ca875a0afd21f3d4"
+        "d6706569ca875a0afd21f3d4",
+        "cae9706ce07f8eb6dd74f5c9",
+        "f298519eaa16ffb09d9c67da",
+        "5b5eaa750d711daa99087de8"
       ],
       "relevant_chunk_ids": [
         "0390653a014e24231bb82adb",
@@ -35,9 +41,9 @@
       "retrieved_chunk_ids": [
         "b7584dfd3f5b36d209078213",
         "5b5eaa750d711daa99087de8",
-        "148ade23510a262e2e0e3f6c",
-        "92e7815466917a2de0513908",
-        "a3bb82f4c81a997a78fcf7e5"
+        "473873cfee053839bf84a872",
+        "a3bb82f4c81a997a78fcf7e5",
+        "148ade23510a262e2e0e3f6c"
       ],
       "relevant_chunk_ids": [
         "b7584dfd3f5b36d209078213"
@@ -50,19 +56,19 @@
       "case_id": "foreground-collapse",
       "question": "How much does uncertainty ranking deteriorate when evaluation is restricted from the entire volume to the object foreground, and what does successful temperature calibration fail to repair?",
       "retrieved_chunk_ids": [
-        "b7584dfd3f5b36d209078213",
-        "fcc1d87ee815570f2e34f3cd",
         "7693d52b52f1ad2a279ae450",
-        "3cdb4850e2863c956c0b7b56",
-        "148ade23510a262e2e0e3f6c"
+        "cbf1b7a7f5f6d4089e9e77b7",
+        "b6d5b60beb9128e010bad683",
+        "148ade23510a262e2e0e3f6c",
+        "b7584dfd3f5b36d209078213"
       ],
       "relevant_chunk_ids": [
         "3cdb4850e2863c956c0b7b56",
         "7693d52b52f1ad2a279ae450",
         "fcc1d87ee815570f2e34f3cd"
       ],
-      "recall_at_k": 1.0,
-      "reciprocal_rank": 0.5,
+      "recall_at_k": 0.3333333333333333,
+      "reciprocal_rank": 1.0,
       "hit": true
     },
     {
@@ -70,10 +76,10 @@
       "question": "Why can disagreement across repeated reconstructions fail to reveal the dominant reconstruction error, and does correcting the predictive-mean offset fix the spatial ranking?",
       "retrieved_chunk_ids": [
         "a3bb82f4c81a997a78fcf7e5",
-        "09c07c42acf53d77832c7bf1",
         "23828b38390c0b602d1bd423",
-        "92e7815466917a2de0513908",
-        "31b79153f013ea446baf835d"
+        "09c07c42acf53d77832c7bf1",
+        "5cfbab28788548147ace0810",
+        "5b5eaa750d711daa99087de8"
       ],
       "relevant_chunk_ids": [
         "23828b38390c0b602d1bd423",
@@ -81,7 +87,7 @@
         "a3bb82f4c81a997a78fcf7e5",
         "c0ad1b7734c021480e25c1bb"
       ],
-      "recall_at_k": 0.75,
+      "recall_at_k": 0.5,
       "reciprocal_rank": 1.0,
       "hit": true
     },
@@ -91,9 +97,9 @@
       "retrieved_chunk_ids": [
         "d1a995feee7728fbcc40781f",
         "148ade23510a262e2e0e3f6c",
-        "b7584dfd3f5b36d209078213",
         "3cdb4850e2863c956c0b7b56",
-        "6ea75105fec741492396bcb2"
+        "6ea75105fec741492396bcb2",
+        "cdcd7c590e92d0b91377db74"
       ],
       "relevant_chunk_ids": [
         "d1a995feee7728fbcc40781f"
@@ -107,10 +113,10 @@
       "question": "What explains apparently strong full-volume uncertainty scores despite weak error localization inside the reconstructed object?",
       "retrieved_chunk_ids": [
         "5b5eaa750d711daa99087de8",
-        "148ade23510a262e2e0e3f6c",
         "6ea75105fec741492396bcb2",
-        "d6706569ca875a0afd21f3d4",
-        "473873cfee053839bf84a872"
+        "473873cfee053839bf84a872",
+        "bd31b2fb9ebfe799590427d4",
+        "09c07c42acf53d77832c7bf1"
       ],
       "relevant_chunk_ids": [
         "5b5eaa750d711daa99087de8",
@@ -127,9 +133,9 @@
       "retrieved_chunk_ids": [
         "92e7815466917a2de0513908",
         "53c92844ecb4693f656ec8b6",
-        "a3bb82f4c81a997a78fcf7e5",
-        "82a0b7afb0eb1a995759369b",
-        "bd31b2fb9ebfe799590427d4"
+        "bd31b2fb9ebfe799590427d4",
+        "f617a8d045f9ecaffd78f325",
+        "5df3ff21a9745c2c8bcd05df"
       ],
       "relevant_chunk_ids": [
         "53c92844ecb4693f656ec8b6",
@@ -146,8 +152,8 @@
         "e65f5e190f8cf4c53a8dc642",
         "b7944fd715fa92de062c7703",
         "f9b63f4b372f6a693c0f54e8",
-        "2a405d2184b7034f257a1858",
-        "1b92d9d09d7f7b85485fc402"
+        "34bef4c465e9c39926bf245d",
+        "ee8216e6a34a589d7855d90c"
       ],
       "relevant_chunk_ids": [
         "b7944fd715fa92de062c7703",

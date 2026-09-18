@@ -1,0 +1,106 @@
+{
+  "name": "Closed-Uncertainty semantic retrieval baseline",
+  "description": "Eight manually labelled retrieval questions covering uncertainty formulation, evaluation, failure mechanisms, calibration, learned error prediction, and held-out human CT evaluation.",
+  "cases": [
+    {
+      "id": "analytic-moments",
+      "question": "Under fixed Gaussian geometry, why can radiative CT rendering support one-pass analytic predictive moments, and what normalization is required for squared projected kernels?",
+      "relevant_chunk_ids": [
+          "0390653a014e24231bb82adb",
+          "4b70a3f445b831de8978241a",
+          "f298519eaa16ffb09d9c67da",
+          "cae9706ce07f8eb6dd74f5c9"
+      ],
+      "top_k": 5,
+      "document_ids": [
+        "21f41f120763852b6e48541922fc6f862f21638367c4e3cc98cbdffbd8e2c2f7"
+      ]
+    },
+    {
+      "id": "uncertainty-metrics",
+      "question": "Which complementary metrics evaluate whether uncertainty identifies reconstruction error, and how is the foreground region defined?",
+      "relevant_chunk_ids": [
+          "b7584dfd3f5b36d209078213"
+      ],
+      "top_k": 5,
+      "document_ids": [
+        "21f41f120763852b6e48541922fc6f862f21638367c4e3cc98cbdffbd8e2c2f7"
+      ]
+    },
+    {
+      "id": "foreground-collapse",
+      "question": "How much does uncertainty ranking deteriorate when evaluation is restricted from the entire volume to the object foreground, and what does successful temperature calibration fail to repair?",
+      "relevant_chunk_ids": [
+        "7693d52b52f1ad2a279ae450",
+        "fcc1d87ee815570f2e34f3cd",
+        "3cdb4850e2863c956c0b7b56"
+      ],
+      "top_k": 5,
+      "document_ids": [
+        "21f41f120763852b6e48541922fc6f862f21638367c4e3cc98cbdffbd8e2c2f7"
+      ]
+    },
+    {
+      "id": "shared-error",
+      "question": "Why can disagreement across repeated reconstructions fail to reveal the dominant reconstruction error, and does correcting the predictive-mean offset fix the spatial ranking?",
+      "relevant_chunk_ids": [
+        "c0ad1b7734c021480e25c1bb",
+        "23828b38390c0b602d1bd423",
+        "a3bb82f4c81a997a78fcf7e5",
+        "92e7815466917a2de0513908"
+      ],
+      "top_k": 5,
+      "document_ids": [
+        "21f41f120763852b6e48541922fc6f862f21638367c4e3cc98cbdffbd8e2c2f7"
+      ]
+    },
+    {
+      "id": "calibration-limit",
+      "question": "Why do scalar temperature or conformal calibration not improve spatial error localization, and what change to the reconstruction members produced better ranking?",
+      "relevant_chunk_ids": [
+        "d1a995feee7728fbcc40781f"
+      ],
+      "top_k": 5,
+      "document_ids": [
+        "21f41f120763852b6e48541922fc6f862f21638367c4e3cc98cbdffbd8e2c2f7"
+      ]
+    },
+    {
+      "id": "global-local-gap",
+      "question": "What explains apparently strong full-volume uncertainty scores despite weak error localization inside the reconstructed object?",
+      "relevant_chunk_ids": [
+          "7cc1197110f6a3570b37de1c",
+          "5b5eaa750d711daa99087de8",
+          "6ea75105fec741492396bcb2"
+      ],
+      "top_k": 5,
+      "document_ids": [
+        "21f41f120763852b6e48541922fc6f862f21638367c4e3cc98cbdffbd8e2c2f7"
+      ]
+    },
+    {
+      "id": "learned-error-predictor",
+      "question": "Which test-time features are used to predict error missed by posterior spread, and how well does the learned predictor transfer to other view budgets, reconstruction backbones, and real scans?",
+      "relevant_chunk_ids": [
+        "92e7815466917a2de0513908",
+        "53c92844ecb4693f656ec8b6"
+      ],
+      "top_k": 5,
+      "document_ids": [
+        "21f41f120763852b6e48541922fc6f862f21638367c4e3cc98cbdffbd8e2c2f7"
+      ]
+    },
+    {
+      "id": "held-out-human-ct",
+      "question": "How was evaluation on held-out human anatomy designed, and what improvements did anatomy-trained predictors achieve for foreground ranking and selective prediction?",
+      "relevant_chunk_ids": [
+        "e65f5e190f8cf4c53a8dc642",
+        "b7944fd715fa92de062c7703"
+      ],
+      "top_k": 5,
+      "document_ids": [
+        "21f41f120763852b6e48541922fc6f862f21638367c4e3cc98cbdffbd8e2c2f7"
+      ]
+    }
+  ]
+}

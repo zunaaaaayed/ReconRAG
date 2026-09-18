@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     database_path: Path = Field(default=Path("data/reconrag.db"))
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     retrieval_top_k: int = Field(default=5, ge=1, le=50)
+    generation_model: str = "gemma4:e2b"
+    ollama_host: str = "http://localhost:11434"
+    generation_max_tokens: int = Field(
+        default=500,
+        ge=64,
+        le=2048,
+    )
     chunk_target_tokens: int = Field(default=350, ge=64, le=510)
     chunk_overlap_tokens: int = Field(default=50, ge=0, le=128)
 

@@ -2,12 +2,42 @@
 enableStaticServing = true
 
 [theme]
-font = "Cooper Medium, serif"
-headingFont = "Cooper Medium, serif"
+font = "Cooper, serif"
+headingFont = "Cooper, serif"
 baseFontWeight = 400
 
 [[theme.fontFaces]]
-family = "Cooper Medium"
-url = "app/static/fonts/Cooper-Medium.ttf"
+family = "Cooper"
+url = "app/static/fonts/Cooper-Regular.ttf"
 weight = "400"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Cooper"
+url = "app/static/fonts/Cooper-Medium.ttf"
+weight = "500"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Cooper"
+url = "app/static/fonts/Cooper-SemiBold.ttf"
+weight = "600"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Cooper"
+url = "app/static/fonts/Cooper-Bold.ttf"
+weight = "700"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Cooper"
+url = "app/static/fonts/Cooper-ExtraBold.ttf"
+weight = "800"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Cooper"
+url = "app/static/fonts/Cooper-Black.ttf"
+weight = "900"
 style = "normal"

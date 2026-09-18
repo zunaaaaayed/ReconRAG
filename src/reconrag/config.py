@@ -20,7 +20,6 @@ class Settings(BaseSettings):
     app_name: str = "ReconRAG"
     data_dir: Path = Field(default=Path("data"))
     papers_dir: Path = Field(default=Path("papers"))
-    qdrant_path: Path = Field(default=Path("data/qdrant"))
     database_path: Path = Field(default=Path("data/reconrag.db"))
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     retrieval_top_k: int = Field(default=5, ge=1, le=50)

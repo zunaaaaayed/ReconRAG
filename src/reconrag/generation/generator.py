@@ -6,8 +6,12 @@ from typing import Any, Protocol
 
 from ollama import Client
 
+from reconrag.generation.citations import (
+    CitationValidator,
+)
 from reconrag.generation.prompt import (
     SYSTEM_PROMPT,
+    build_citation_repair_prompt,
     build_grounded_prompt,
 )
 from reconrag.models import Answer, SearchResult
@@ -60,10 +64,12 @@ class OllamaAnswerGenerator:
     ) -> None:
         if max_tokens < 1:
             raise ValueError("max_tokens must be positive.")
+
         self.model_name = model_name
         self.host = host
         self.max_tokens = max_tokens
         self._client = client
+        self._citation_validator = CitationValidator()
 
     @property
     def client(self) -> Any:
@@ -80,26 +86,72 @@ class OllamaAnswerGenerator:
         question: str,
         evidence: list[SearchResult],
     ) -> Answer:
-        """Generate an answer using only retrieved evidence."""
+        """Generate and citation-check a grounded answer."""
         user_prompt = build_grounded_prompt(
             question=question,
             evidence=evidence,
         )
 
+        messages = [
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT,
+            },
+            {
+                "role": "user",
+                "content": user_prompt,
+            },
+        ]
+
         started_at = perf_counter()
 
+        text = self._request_answer(messages)
+
+        validation = self._citation_validator.validate(
+            text=text,
+            evidence_count=len(evidence),
+        )
+
+        if not validation.is_valid:
+            messages.extend(
+                [
+                    {
+                        "role": "assistant",
+                        "content": text,
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            build_citation_repair_prompt(
+                                evidence_count=len(evidence),
+                                invalid_citations=(validation.invalid_citations),
+                                malformed_citations=(validation.malformed_citations),
+                                citations_missing=(not validation.has_citations),
+                            )
+                        ),
+                    },
+                ]
+            )
+
+            text = self._request_answer(messages)
+
+        latency_seconds = perf_counter() - started_at
+
+        return Answer(
+            text=text.strip(),
+            evidence=evidence,
+            model_name=self.model_name,
+            latency_seconds=latency_seconds,
+        )
+
+    def _request_answer(
+        self,
+        messages: list[dict[str, str]],
+    ) -> str:
+        """Request and sanitize one Ollama response."""
         response = self.client.chat(
             model=self.model_name,
-            messages=[
-                {
-                    "role": "system",
-                    "content": SYSTEM_PROMPT,
-                },
-                {
-                    "role": "user",
-                    "content": user_prompt,
-                },
-            ],
+            messages=messages,
             stream=False,
             think=False,
             options={
@@ -107,8 +159,6 @@ class OllamaAnswerGenerator:
                 "num_predict": self.max_tokens,
             },
         )
-
-        latency_seconds = perf_counter() - started_at
 
         raw_text = response.message.content
 
@@ -120,9 +170,4 @@ class OllamaAnswerGenerator:
         if not text:
             raise RuntimeError("Ollama returned an empty answer.")
 
-        return Answer(
-            text=text.strip(),
-            evidence=evidence,
-            model_name=self.model_name,
-            latency_seconds=latency_seconds,
-        )
+        return text

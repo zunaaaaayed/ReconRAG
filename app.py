@@ -9,7 +9,10 @@ from httpx import HTTPError
 from ollama import ResponseError
 
 from reconrag.config import get_settings
-from reconrag.generation import OllamaAnswerGenerator
+from reconrag.generation import (
+    CitationValidator,
+    OllamaAnswerGenerator,
+)
 from reconrag.ingestion.chunker import SectionAwareChunker
 from reconrag.ingestion.parser import PdfParser, PdfParsingError
 from reconrag.models import Chunk, Document, ParsedPaper
@@ -338,7 +341,7 @@ def render_app() -> None:
     with st.sidebar:
         st.header("Project status")
 
-        st.success("Milestone 5 · Persistent paper library")
+        st.success("Milestone 8 · Citation integrity")
 
         parsed_papers = st.session_state.get(
             "parsed_papers",
@@ -713,11 +716,62 @@ def render_app() -> None:
                         st.markdown("### Answer")
                         st.markdown(answer.text)
 
+                        citation_validation = CitationValidator().validate(
+                            text=answer.text,
+                            evidence_count=len(answer.evidence),
+                        )
+
+                        if citation_validation.is_valid:
+                            st.success(
+                                "Citation syntax and evidence references passed."
+                            )
+                        else:
+                            citation_issues: list[str] = []
+
+                            if not (citation_validation.has_citations):
+                                citation_issues.append(
+                                    "the answer contains no citations"
+                                )
+
+                            if citation_validation.invalid_citations:
+                                invalid_numbers = ", ".join(
+                                    str(number)
+                                    for number in (
+                                        citation_validation.invalid_citations
+                                    )
+                                )
+                                citation_issues.append(
+                                    f"invalid evidence numbers: {invalid_numbers}"
+                                )
+
+                            if citation_validation.malformed_citations:
+                                malformed = ", ".join(
+                                    citation_validation.malformed_citations
+                                )
+                                citation_issues.append(
+                                    f"malformed citations: {malformed}"
+                                )
+
+                            st.warning(
+                                "Citation validation "
+                                "requires manual review: "
+                                + "; ".join(citation_issues)
+                                + "."
+                            )
+
+                        st.caption(
+                            "Citation validation checks "
+                            "citation syntax and numbering, "
+                            "not whether a passage logically "
+                            "supports every claim."
+                        )
+
                         (
                             model_column,
                             latency_column,
                             evidence_column,
-                        ) = st.columns(3)
+                            citation_column,
+                        ) = st.columns(4)
 
                         model_column.metric(
                             "Model",
@@ -729,6 +783,13 @@ def render_app() -> None:
                         evidence_column.metric(
                             "Evidence passages",
                             len(answer.evidence),
+                        )
+                        citation_column.metric(
+                            "Evidence cited",
+                            (
+                                f"{citation_validation.cited_evidence_count}"
+                                f"/{citation_validation.evidence_count}"
+                            ),
                         )
 
                         st.markdown("### Retrieved evidence")

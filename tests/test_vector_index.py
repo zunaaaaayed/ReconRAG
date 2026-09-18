@@ -142,3 +142,44 @@ def test_empty_index_returns_no_results() -> None:
     index = InMemoryVectorIndex(FakeEmbedder())
 
     assert index.search("Gaussian tomography") == []
+
+
+def test_snapshot_restores_searchable_index() -> None:
+    document = _document(
+        "paper-one",
+        "Gaussian Reconstruction",
+    )
+
+    chunks = [
+        _chunk(
+            "chunk-one",
+            document.id,
+            "Gaussian tomography reconstruction.",
+            "Method",
+            0,
+        ),
+        _chunk(
+            "chunk-two",
+            document.id,
+            "Uncertainty estimation and calibration.",
+            "Uncertainty",
+            1,
+        ),
+    ]
+
+    original_index = InMemoryVectorIndex(FakeEmbedder())
+    original_index.build([(document, chunks)])
+
+    snapshot = original_index.snapshot()
+
+    restored_index = InMemoryVectorIndex(FakeEmbedder())
+    restored_index.load(snapshot)
+
+    results = restored_index.search(
+        "uncertainty",
+        top_k=1,
+    )
+
+    assert restored_index.size == 2
+    assert len(snapshot) == 2
+    assert results[0].chunk.id == "chunk-two"

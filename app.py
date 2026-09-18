@@ -1,28 +1,24 @@
 """Streamlit entry point for ReconRAG."""
 
+import sqlite3
 from datetime import UTC, datetime
+from pathlib import Path
 
 import streamlit as st
 from httpx import HTTPError
 from ollama import ResponseError
 
 from reconrag.config import get_settings
-from reconrag.generation import (
-    OllamaAnswerGenerator,
-)
-from reconrag.ingestion.chunker import (
-    SectionAwareChunker,
-)
-from reconrag.ingestion.parser import (
-    PdfParser,
-    PdfParsingError,
-)
+from reconrag.generation import OllamaAnswerGenerator
+from reconrag.ingestion.chunker import SectionAwareChunker
+from reconrag.ingestion.parser import PdfParser, PdfParsingError
 from reconrag.models import Chunk, Document, ParsedPaper
 from reconrag.retrieval import (
     InMemoryVectorIndex,
     SentenceTransformerEmbedder,
 )
 from reconrag.services.ingest_service import store_pdf
+from reconrag.storage import LibraryRepository
 
 
 @st.cache_resource
@@ -67,6 +63,14 @@ def get_answer_generator(
     )
 
 
+@st.cache_resource
+def get_library_repository(
+    database_path: str,
+) -> LibraryRepository:
+    """Reuse the SQLite paper repository across reruns."""
+    return LibraryRepository(Path(database_path))
+
+
 def _page_label(
     page_numbers: list[int],
 ) -> str:
@@ -100,10 +104,95 @@ def _document_from_paper(
     )
 
 
+def _initialize_library_state(
+    database_path: str,
+    embedding_model: str,
+) -> None:
+    """Restore documents, chunks, and embeddings from SQLite."""
+    if st.session_state.get("library_initialized"):
+        return
+
+    repository = get_library_repository(database_path)
+
+    snapshot = repository.load(
+        expected_embedding_model=embedding_model,
+    )
+
+    vector_index = InMemoryVectorIndex(get_embedder(embedding_model))
+
+    if snapshot.requires_reindex:
+        vector_index.build(
+            [
+                (
+                    document,
+                    snapshot.paper_chunks.get(
+                        document_id,
+                        [],
+                    ),
+                )
+                for (
+                    document_id,
+                    document,
+                ) in snapshot.documents.items()
+            ]
+        )
+
+        refreshed_embeddings = vector_index.snapshot()
+
+        for document_id in snapshot.stale_document_ids:
+            document = snapshot.documents[document_id]
+            paper = snapshot.parsed_papers[document.checksum]
+
+            document_embeddings = [
+                indexed_embedding
+                for indexed_embedding in refreshed_embeddings
+                if indexed_embedding.document.id == document_id
+            ]
+
+            repository.save_paper(
+                document=document,
+                paper=paper,
+                embeddings=document_embeddings,
+                embedding_model=embedding_model,
+            )
+    else:
+        vector_index.load(snapshot.embeddings)
+
+    st.session_state["parsed_papers"] = snapshot.parsed_papers
+    st.session_state["paper_chunks"] = snapshot.paper_chunks
+    st.session_state["documents"] = snapshot.documents
+    st.session_state["vector_index"] = vector_index
+    st.session_state["library_initialized"] = True
+
+
+def _delete_document_from_library(
+    document_id: str,
+    database_path: str,
+    embedding_model: str,
+) -> bool:
+    """Delete a paper and reload the active library state."""
+    repository = get_library_repository(database_path)
+
+    if not repository.delete_document(document_id):
+        return False
+
+    snapshot = repository.load(expected_embedding_model=embedding_model)
+
+    vector_index = InMemoryVectorIndex(get_embedder(embedding_model))
+    vector_index.load(snapshot.embeddings)
+
+    st.session_state["parsed_papers"] = snapshot.parsed_papers
+    st.session_state["paper_chunks"] = snapshot.paper_chunks
+    st.session_state["documents"] = snapshot.documents
+    st.session_state["vector_index"] = vector_index
+
+    return True
+
+
 def _render_parsed_paper(
     paper: ParsedPaper,
     chunks: list[Chunk],
-) -> None:
+) -> bool:
     """Render metadata, chunks, and extracted text."""
     with st.expander(
         paper.title,
@@ -184,6 +273,25 @@ def _render_parsed_paper(
             if len(paper.markdown) > 20_000:
                 st.caption("Preview truncated to 20,000 characters.")
 
+        st.divider()
+
+        st.caption(
+            "Removing this paper deletes its parsed "
+            "content, chunks, and embeddings from the "
+            "ReconRAG library. The original PDF is kept."
+        )
+
+        delete_confirmed = st.checkbox(
+            "I understand and want to remove this paper.",
+            key=f"confirm-delete-{paper.checksum}",
+        )
+
+        return st.button(
+            "Remove paper from library",
+            key=f"delete-paper-{paper.checksum}",
+            disabled=not delete_confirmed,
+        )
+
 
 def render_app() -> None:
     """Render the ReconRAG application."""
@@ -195,6 +303,22 @@ def render_app() -> None:
         layout="wide",
     )
 
+    try:
+        with st.spinner("Loading the local research library..."):
+            _initialize_library_state(
+                database_path=str(settings.database_path),
+                embedding_model=(settings.embedding_model),
+            )
+    except (
+        OSError,
+        RuntimeError,
+        ValueError,
+        sqlite3.Error,
+    ) as exc:
+        st.error("ReconRAG could not load the persistent paper library.")
+        st.caption(str(exc))
+        st.stop()
+
     st.title("🔬 ReconRAG")
 
     st.caption(
@@ -203,10 +327,18 @@ def render_app() -> None:
         "3D reconstruction literature."
     )
 
+    library_notice = st.session_state.pop(
+        "library_notice",
+        None,
+    )
+
+    if library_notice:
+        st.success(library_notice)
+
     with st.sidebar:
         st.header("Project status")
 
-        st.success("Milestone 4 · Grounded generation")
+        st.success("Milestone 5 · Persistent paper library")
 
         parsed_papers = st.session_state.get(
             "parsed_papers",
@@ -262,19 +394,6 @@ def render_app() -> None:
         )
 
         if parse_clicked:
-            st.session_state.setdefault(
-                "parsed_papers",
-                {},
-            )
-            st.session_state.setdefault(
-                "paper_chunks",
-                {},
-            )
-            st.session_state.setdefault(
-                "documents",
-                {},
-            )
-
             parser = get_pdf_parser()
 
             chunker = get_chunker(
@@ -282,6 +401,10 @@ def render_app() -> None:
                 settings.chunk_target_tokens,
                 settings.chunk_overlap_tokens,
             )
+
+            repository = get_library_repository(str(settings.database_path))
+
+            new_document_ids: set[str] = set()
 
             progress = st.progress(
                 0,
@@ -299,43 +422,43 @@ def render_app() -> None:
 
                 try:
                     stored = store_pdf(
-                        content=(uploaded_file.getvalue()),
+                        content=uploaded_file.getvalue(),
                         original_filename=(uploaded_file.name),
-                        papers_dir=(settings.papers_dir),
+                        papers_dir=settings.papers_dir,
                     )
+
+                    if repository.contains_checksum(stored.checksum):
+                        st.info(f"{uploaded_file.name} is already in the library.")
+                        continue
 
                     paper = parser.parse(stored.path)
                     chunks = chunker.chunk(paper)
+                    document = _document_from_paper(paper)
 
                     st.session_state["parsed_papers"][paper.checksum] = paper
 
-                    st.session_state["paper_chunks"][paper.checksum] = chunks
+                    st.session_state["paper_chunks"][document.id] = chunks
 
-                    st.session_state["documents"][paper.checksum] = (
-                        _document_from_paper(paper)
-                    )
+                    st.session_state["documents"][document.id] = document
+
+                    new_document_ids.add(document.id)
 
                 except (
                     OSError,
                     ValueError,
                     PdfParsingError,
+                    sqlite3.Error,
                 ) as exc:
                     st.error(f"Could not process {uploaded_file.name}: {exc}")
 
-            documents = st.session_state.get(
-                "documents",
-                {},
-            )
-            chunks_by_document = st.session_state.get(
-                "paper_chunks",
-                {},
-            )
-
-            if documents:
+            if new_document_ids:
                 progress.progress(
                     0.95,
-                    text=("Creating local embeddings..."),
+                    text="Creating local embeddings...",
                 )
+
+                documents = st.session_state["documents"]
+                chunks_by_document = st.session_state["paper_chunks"]
 
                 try:
                     vector_index = InMemoryVectorIndex(
@@ -358,23 +481,50 @@ def render_app() -> None:
                         ]
                     )
 
+                    indexed_embeddings = vector_index.snapshot()
+
+                    for document_id in new_document_ids:
+                        document = documents[document_id]
+                        paper = st.session_state["parsed_papers"][document.checksum]
+
+                        document_embeddings = [
+                            indexed_embedding
+                            for indexed_embedding in indexed_embeddings
+                            if (indexed_embedding.document.id == document_id)
+                        ]
+
+                        repository.save_paper(
+                            document=document,
+                            paper=paper,
+                            embeddings=(document_embeddings),
+                            embedding_model=(settings.embedding_model),
+                        )
+
                     st.session_state["vector_index"] = vector_index
+
+                    st.success("New papers were saved to the persistent library.")
 
                 except (
                     OSError,
                     RuntimeError,
                     ValueError,
+                    sqlite3.Error,
                 ) as exc:
                     st.session_state.pop(
                         "vector_index",
                         None,
                     )
-                    st.error(f"Could not create the semantic index: {exc}")
+                    st.error(f"Could not create and save the semantic index: {exc}")
 
-            progress.progress(
-                1.0,
-                text=("Parsing, chunking, and indexing complete."),
-            )
+                progress.progress(
+                    1.0,
+                    text=("Parsing, chunking, indexing, and storage complete."),
+                )
+            else:
+                progress.progress(
+                    1.0,
+                    text="No new papers needed processing.",
+                )
 
         parsed_papers = st.session_state.get(
             "parsed_papers",
@@ -382,7 +532,10 @@ def render_app() -> None:
         )
 
         if parsed_papers:
-            for paper in parsed_papers.values():
+            delete_document_id: str | None = None
+            delete_document_title: str | None = None
+
+            for paper in list(parsed_papers.values()):
                 chunks = st.session_state.get(
                     "paper_chunks",
                     {},
@@ -391,10 +544,38 @@ def render_app() -> None:
                     [],
                 )
 
-                _render_parsed_paper(
+                delete_requested = _render_parsed_paper(
                     paper,
                     chunks,
                 )
+
+                if delete_requested:
+                    delete_document_id = paper.checksum
+                    delete_document_title = paper.title
+
+            if delete_document_id is not None:
+                try:
+                    deleted = _delete_document_from_library(
+                        document_id=(delete_document_id),
+                        database_path=str(settings.database_path),
+                        embedding_model=(settings.embedding_model),
+                    )
+                except (
+                    OSError,
+                    RuntimeError,
+                    ValueError,
+                    sqlite3.Error,
+                ) as exc:
+                    st.error("ReconRAG could not remove the paper from the library.")
+                    st.caption(str(exc))
+                else:
+                    if deleted:
+                        st.session_state["library_notice"] = (
+                            f"{delete_document_title} was removed from the library."
+                        )
+                        st.rerun()
+                    else:
+                        st.warning("The paper was no longer present in the library.")
         else:
             st.info("Upload a research paper to inspect its extracted structure.")
 
@@ -520,10 +701,11 @@ def render_app() -> None:
                         ValueError,
                     ) as exc:
                         st.error(
-                            "ReconRAG could not "
-                            "generate an answer. "
-                            "Make sure Ollama is open "
-                            "and qwen3:4b is installed."
+                            "ReconRAG could not generate "
+                            "an answer. Make sure Ollama "
+                            "is open and "
+                            f"{settings.generation_model} "
+                            "is installed."
                         )
                         st.caption(str(exc))
 

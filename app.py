@@ -3,8 +3,13 @@
 from datetime import UTC, datetime
 
 import streamlit as st
+from httpx import HTTPError
+from ollama import ResponseError
 
 from reconrag.config import get_settings
+from reconrag.generation import (
+    OllamaAnswerGenerator,
+)
 from reconrag.ingestion.chunker import (
     SectionAwareChunker,
 )
@@ -46,6 +51,20 @@ def get_embedder(
 ) -> SentenceTransformerEmbedder:
     """Reuse the embedding model across Streamlit reruns."""
     return SentenceTransformerEmbedder(model_name)
+
+
+@st.cache_resource
+def get_answer_generator(
+    model_name: str,
+    host: str,
+    max_tokens: int,
+) -> OllamaAnswerGenerator:
+    """Reuse the local answer generator across reruns."""
+    return OllamaAnswerGenerator(
+        model_name=model_name,
+        host=host,
+        max_tokens=max_tokens,
+    )
 
 
 def _page_label(
@@ -187,7 +206,7 @@ def render_app() -> None:
     with st.sidebar:
         st.header("Project status")
 
-        st.success("Milestone 3 · Semantic retrieval")
+        st.success("Milestone 4 · Grounded generation")
 
         parsed_papers = st.session_state.get(
             "parsed_papers",
@@ -380,7 +399,7 @@ def render_app() -> None:
             st.info("Upload a research paper to inspect its extracted structure.")
 
     with ask_tab:
-        st.subheader("Search the evidence")
+        st.subheader("Ask the research collection")
 
         vector_index = st.session_state.get(
             "vector_index",
@@ -395,13 +414,14 @@ def render_app() -> None:
         )
 
         if vector_index is None or vector_index.size == 0:
-            st.info("Parse and index at least one paper before searching.")
+            st.info("Parse and index at least one paper before asking a question.")
         else:
-            query = st.text_input(
+            query = st.text_area(
                 "Research question",
                 placeholder=(
-                    "How are 3D Gaussians optimized for sparse-view reconstruction?"
+                    "How are 3D Gaussians initialized and optimized for sparse-view CT?"
                 ),
+                height=100,
             )
 
             document_options: list[str | None] = [
@@ -449,61 +469,121 @@ def render_app() -> None:
             )
 
             top_k = st.slider(
-                "Number of passages",
+                "Number of evidence passages",
                 min_value=1,
                 max_value=10,
-                value=5,
+                value=min(
+                    settings.retrieval_top_k,
+                    10,
+                ),
             )
 
-            search_clicked = st.button(
-                "Search papers",
+            generate_clicked = st.button(
+                "Generate grounded answer",
                 type="primary",
                 disabled=not query.strip(),
             )
 
-            if search_clicked:
-                with st.spinner("Searching the indexed evidence..."):
-                    results = vector_index.search(
-                        query=query,
-                        top_k=top_k,
-                        document_ids=(
-                            None if selected_document is None else {selected_document}
-                        ),
-                        section_heading=(selected_section),
-                    )
+            if generate_clicked:
+                results = vector_index.search(
+                    query=query,
+                    top_k=top_k,
+                    document_ids=(
+                        None if selected_document is None else {selected_document}
+                    ),
+                    section_heading=(selected_section),
+                )
 
                 if not results:
-                    st.warning("No passages matched the current filters.")
+                    st.warning("No evidence passages matched the current filters.")
+                else:
+                    generator = get_answer_generator(
+                        model_name=(settings.generation_model),
+                        host=(settings.ollama_host),
+                        max_tokens=(settings.generation_max_tokens),
+                    )
 
-                for rank, result in enumerate(
-                    results,
-                    start=1,
-                ):
-                    chunk = result.chunk
-
-                    with st.container(border=True):
-                        st.markdown(f"**{rank}. {result.document.title}**")
-
-                        page_label = _chunk_page_label(chunk)
-
-                        page_prefix = (
-                            "Page"
-                            if (
-                                chunk.page_start is not None
-                                and chunk.page_start == chunk.page_end
+                    try:
+                        with st.spinner(
+                            "Reading the evidence and generating an answer..."
+                        ):
+                            answer = generator.generate(
+                                question=query,
+                                evidence=results,
                             )
-                            else "Pages"
+
+                    except (
+                        HTTPError,
+                        ResponseError,
+                        OSError,
+                        RuntimeError,
+                        ValueError,
+                    ) as exc:
+                        st.error(
+                            "ReconRAG could not "
+                            "generate an answer. "
+                            "Make sure Ollama is open "
+                            "and qwen3:4b is installed."
+                        )
+                        st.caption(str(exc))
+
+                    else:
+                        st.markdown("### Answer")
+                        st.markdown(answer.text)
+
+                        (
+                            model_column,
+                            latency_column,
+                            evidence_column,
+                        ) = st.columns(3)
+
+                        model_column.metric(
+                            "Model",
+                            answer.model_name,
+                        )
+                        latency_column.metric(
+                            "Generation time", f"{answer.latency_seconds:.1f} s"
+                        )
+                        evidence_column.metric(
+                            "Evidence passages",
+                            len(answer.evidence),
                         )
 
-                        section_label = chunk.section_heading or "Unknown section"
+                        st.markdown("### Retrieved evidence")
 
-                        st.caption(
-                            f"{page_prefix} {page_label} · "
-                            f"{section_label} · "
-                            f"Similarity {result.score:.3f}"
-                        )
+                        for (
+                            citation_number,
+                            result,
+                        ) in enumerate(
+                            answer.evidence,
+                            start=1,
+                        ):
+                            chunk = result.chunk
+                            page_label = _chunk_page_label(chunk)
 
-                        st.write(chunk.text)
+                            page_prefix = (
+                                "Page"
+                                if (
+                                    chunk.page_start is not None
+                                    and chunk.page_start == chunk.page_end
+                                )
+                                else "Pages"
+                            )
+
+                            section_label = chunk.section_heading or "Unknown section"
+
+                            expander_label = (
+                                f"[{citation_number}] "
+                                f"{result.document.title}"
+                                f" · {page_prefix} "
+                                f"{page_label}"
+                            )
+
+                            with st.expander(expander_label):
+                                st.caption(
+                                    f"{section_label} · Similarity {result.score:.3f}"
+                                )
+                                st.write(chunk.text)
 
 
 if __name__ == "__main__":

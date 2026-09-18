@@ -9,7 +9,9 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "docling>=2.127.0",
+    "httpx>=0.28.1",
     "numpy>=2.5.3",
+    "ollama>=0.6.2",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
     "qdrant-client>=1.19.1",

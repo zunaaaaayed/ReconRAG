@@ -341,7 +341,7 @@ def render_app() -> None:
     with st.sidebar:
         st.header("Project status")
 
-        st.success("Milestone 8 · Citation integrity")
+        st.success("v0.1.0 · Local evidence-grounded RAG")
 
         parsed_papers = st.session_state.get(
             "parsed_papers",

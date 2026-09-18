@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Evidence-grounded research assistant for sparse-view CT and 3D reconstruction literature"
 readme = "README.md"
 authors = [
-    { name = "zunaaaaayed", email = "zunayedology@gmail.com" }
+    { name = "Md Zunayedul Islam", email = "zunayed.erasmus@gmail.com" }
 ]
 requires-python = ">=3.13"
 dependencies = [
@@ -14,7 +14,6 @@ dependencies = [
     "ollama>=0.6.2",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
-    "qdrant-client>=1.19.1",
     "sentence-transformers>=6.0.1",
     "streamlit>=1.64.0",
     "transformers>=5.17.0",
